@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Upload Review & Get 20% Off</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; max-width: 450px; margin: 0 auto; background: #f9fafb; }
+    .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    h2 { margin-top: 0; color: #111827; text-align: center; }
+    .field { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
+    input { width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
+    button { width: 100%; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 16px; }
+    button:disabled { background: #93c5fd; }
+    #status { margin-top: 16px; font-weight: 600; text-align: center; font-size: 15px; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Upload Review & Get 20% Off</h2>
+
+    <form id="ugcForm">
+      <div class="field">
+        <label>Your Name</label>
+        <input type="text" id="customerName" required placeholder="e.g. John Doe" />
+      </div>
+      
+      <div class="field">
+        <label>Phone Number (WhatsApp)</label>
+        <input type="tel" id="customerPhone" required placeholder="+60123456789" />
+      </div>
+
+      <div class="field">
+        <label>Select Video Review</label>
+        <input type="file" id="videoFile" accept="video/*" required />
+      </div>
+
+      <button type="submit" id="submitBtn">Submit & Unlock Discount</button>
+    </form>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    // ------------------------------------------------------------------------
+    // YOUR LIVE CREDENTIALS
+    // ------------------------------------------------------------------------
+    const SUPABASE_URL = "https://jsntdjhuhmhzpatjsptm.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_bntTX2g6C4hBzm87f9ES_A_411hU4Sm"; 
+    const CLOUDINARY_CLOUD_NAME = "cirbgyy2"; 
+    const CLOUDINARY_UPLOAD_PRESET = "ugc_preset";
+    // ------------------------------------------------------------------------
+
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const form = document.getElementById('ugcForm');
+    const statusDiv = document.getElementById('status');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const file = document.getElementById('videoFile').files[0];
+      const name = document.getElementById('customerName').value;
+      const phone = document.getElementById('customerPhone').value;
+
+      if (!file) return;
+
+      try {
+        submitBtn.disabled = true;
+        statusDiv.style.color = "#2563eb";
+        statusDiv.innerText = "Uploading video to Cloudinary...";
+
+        // Step A: Upload video directly to Cloudinary
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+        formData.append('resource_type', 'video');
+
+        const cloudRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`,
+          { method: 'POST', body: formData }
+        );
+
+        const cloudData = await cloudRes.json();
+        if (!cloudRes.ok) throw new Error(cloudData.error?.message || "Cloudinary upload failed");
+
+        statusDiv.innerText = "Saving to database & generating reward...";
+
+        // Step B: Generate coupon code & save metadata in Supabase
+        const rewardCode = "DISCOUNT20-" + Math.floor(1000 + Math.random() * 9000);
+
+        const { error } = await supabaseClient
+          .from('ugc_submissions')
+          .insert([{
+            customer_name: name,
+            customer_phone: phone,
+            video_url: cloudData.secure_url,
+            cloudinary_public_id: cloudData.public_id,
+            reward_code: rewardCode
+          }]);
+
+        if (error) throw error;
+
+        // Step C: Show output
+        statusDiv.style.color = "#16a34a";
+        statusDiv.innerHTML = `
+          🎉 Video review submitted!<br/>
+          Your Discount Code: <strong>${rewardCode}</strong>
+        `;
+        form.reset();
+
+      } catch (err) {
+        console.error(err);
+        statusDiv.style.color = "#dc2626";
+        statusDiv.innerText = "Error: " + err.message;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
